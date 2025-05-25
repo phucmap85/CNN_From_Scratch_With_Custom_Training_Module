@@ -1,7 +1,9 @@
 #include <bits/stdc++.h>
 #include "include/nn/nn.h"
-#include "include/dataloader/dataloader.h"
+#include "include/utils/utils.h"
+#include "include/tensor/tensor.h"
 #include "include/lodepng/lodepng.h"
+#include "include/dataloader/dataloader.h"
 using namespace std;
 
 #define ll int
@@ -22,19 +24,11 @@ str loss_function;
 vector<Layer*> sequential;
 
 // Input and Output
-vector<Image*> X;
+vector<Tensor *> X;
 vector<ll> Y;
 vector<str> classes;
 
-// // Activation function
-// db sigmoid(db x) {return 1 / (1 + exp(-x));}
-// db sigmoid_dx(db x) {return sigmoid(x) * (1 - sigmoid(x));}
-// db relu(db x) {return x > 0 ? x : 0;}
-// db relu_dx(db x) {return x > 0;}
-// db tanh(db x) {return (exp(x) - exp(-x)) / (exp(x) + exp(-x));}
-// db tanh_dx(db x) {return 1 - tanh(x) * tanh(x);}
-// db linear(db x) {return x;}
-// db linear_dx(db x) {return 1;}
+
 // db softmax(db x, ll layer, ll node) {
 //     db total_exp = 0;
 //     for(ll cnode=0;cnode<nodes_per_layer[layer];cnode++) {
@@ -72,21 +66,20 @@ void read_model_config(const string filename) {
 		str command = s.substr(0, s.find(" "));
 
 		if(command == "conv") {
-			ll filter, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w; 
+			ll filter, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w, input_layer = 0;
 			char _activation[15], trash[15];
 
-			sscanf(s.c_str(), "%s %d (%d, %d) (%d, %d) (%d, %d) %s", trash, &filter, &kernel_h, &kernel_w, 
-				&stride_h, &stride_w, &pad_h, &pad_w, _activation);
+			sscanf(s.c_str(), "%s %d (%d, %d) (%d, %d) (%d, %d) %s %d", trash, &filter, &kernel_h, &kernel_w, 
+				&stride_h, &stride_w, &pad_h, &pad_w, _activation, &input_layer);
 
 			str activation = str(_activation);
 
-			Layer *conv = new Layer(command, filter, kernel_h, kernel_w, stride_h, stride_w, 
-				pad_h, pad_w, activation);
+			Layer *conv = new Layer(filter, kernel_h, kernel_w, stride_h, stride_w, 
+				pad_h, pad_w, activation, input_layer);
 
 			// cout<<"Convolution Layer:"<<endl;
-			// cout<<"  Type: "<<conv->type<<endl;
 			// cout<<"  Filters: "<<conv->conv->filter<<endl;
-			// cout<<"  Kernel Size: ("<<conv->conv->kernel_h<<", "<<conv->conv->kernel_w<<")"<<endl;
+			// cout<<"  Kernel Size: ("<<conv->conv->kernel_h<<", "<<conv->conv->kernel_w<<", "<<conv->conv->kernel_d<<")"<<endl;
 			// cout<<"  Stride: ("<<conv->conv->stride_h<<", "<<conv->conv->stride_w<<")"<<endl;
 			// cout<<"  Padding: ("<<conv->conv->pad_h<<", "<<conv->conv->pad_w<<")"<<endl;
 			// cout<<"  Activation: "<<conv->conv->activation<<endl;
@@ -101,10 +94,9 @@ void read_model_config(const string filename) {
 
 			str type = str(_type);
 
-			Layer *pooling = new Layer("pooling", pool_h, pool_w, type);
+			Layer *pooling = new Layer(pool_h, pool_w, type);
 
 			// cout<<"Pooling Layer:"<<endl;
-			// cout<<"  Type: "<<pooling->type<<endl;
 			// cout<<"  Pooling Size: ("<<pooling->pooling->pool_h<<", "<<pooling->pooling->pool_w<<")"<<endl;
 			// cout<<"  Pooling Type: "<<command<<endl;
 
@@ -118,20 +110,18 @@ void read_model_config(const string filename) {
 
 			str activation = str(_activation);
 
-			Layer *dense = new Layer(command, nodes, activation);
+			Layer *dense = new Layer(nodes, activation);
 
 			// cout<<"Dense Layer:"<<endl;
-			// cout<<"  Type: "<<dense->type<<endl;
 			// cout<<"  Nodes: "<<nodes<<endl;
 			// cout<<"  Activation: "<<activation<<endl;
 
 			sequential.push_back(dense);
 		}
 		else if(command == "flatten") {
-			Layer *flatten = new Layer(command);
+			Layer *flatten = new Layer();
 
 			// cout<<"Flatten Layer:"<<endl;
-			// cout<<"  Type: "<<flatten->type<<endl;
 
 			sequential.push_back(flatten);
 		}
@@ -161,17 +151,29 @@ signed main() {
 
 	initialize_weights(sequential);
 
-	load_dataset(50000, "cifar", X, Y, classes);
+	str path = "cifar";
+
+	load_dataset(100, path, X, Y, classes);
+
+	convolution(X[0], sequential[0]->conv);
 
 	// print 5 images and their labels
-	for(ll i=0;i<5 && i<sz(X);i++) {
-		cout<<"Image "<<i+1<<":\n";
-		for(ll w=0;w<X[i]->width;w++) {
-			for(ll h=0;h<X[i]->height;h++) {
-				cout<<"("<<X[i]->R[w][h]<<", "<<X[i]->G[w][h]<<", "<<X[i]->B[w][h]<<") ";
-			}
-			cout<<"\n";
-		}
-		cout<<"Label: "<<classes[Y[i]]<<"\n\n";
-	}
+	// for(ll i=0;i<5 && i<sz(X);i++) {
+	// 	cout<<"Image "<<i+1<<":\n";
+
+	// 	X[i]->export_to_file("test_image/output_" + to_str(i) + ".png");
+
+	// 	for(ll c=0;c<X[i]->depth;c++) {
+	// 		cout<<"Channel "<<c<<":\n";
+	// 		for(ll h=0;h<X[i]->height;h++) {
+	// 			for(ll w=0;w<X[i]->width;w++) {
+	// 				cout<<X[i]->arr[c][h][w]<<" ";
+	// 			}
+	// 			cout<<"\n";
+	// 		}
+	// 		cout<<"\n";
+	// 	}
+
+	// 	cout<<"Label: "<<classes[Y[i]]<<"\n\n";
+	// }
 }

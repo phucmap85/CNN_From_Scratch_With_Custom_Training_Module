@@ -2,6 +2,8 @@
 #define NN_H
 
 #include <bits/stdc++.h>
+#include "../tensor/tensor.h"
+#include "../utils/utils.h"
 
 #define ll int
 #define str string
@@ -13,38 +15,56 @@
 
 struct Conv {
 	ll filter;
-	ll kernel_w, kernel_h;
-	ll stride_w, stride_h;
-	ll pad_w, pad_h;
+	ll stride_h, stride_w;
+	ll pad_h, pad_w;
 	std::str activation;
 
-	db **R, **G, **B, b, **a;
+	Tensor **kernel, **a;
+	db b;
 	
-	Conv(ll _filter, ll _kernel_h, ll _kernel_w, ll _stride_h, ll _stride_w, ll _pad_h, ll _pad_w, std::str _activation) : 
-		filter(_filter), kernel_h(_kernel_h), kernel_w(_kernel_w),
+	Conv(ll _filter, ll _kernel_h, ll _kernel_w, ll _stride_h, ll _stride_w, ll _pad_h, ll _pad_w, std::str _activation, bool _input_layer) : 
+		filter(_filter),
 		stride_h(_stride_h), stride_w(_stride_w),
 		pad_h(_pad_h), pad_w(_pad_w),
-		activation(_activation) {}
+		activation(_activation) {
+			a = new Tensor*[_filter + 5];
+			
+			kernel = new Tensor*[_filter + 5];
+			for(ll i=0;i<_filter;i++) {
+				// Assuming 3 channels (RGB) for input layer, 1 for others
+				kernel[i] = new Tensor(_kernel_h, _kernel_w, _input_layer ? 3 : 1);
+			}
 
-	~Conv() {
-		for(ll h=0;h<kernel_h;h++) {
-			delete[] R[h];
-			delete[] G[h];
-			delete[] B[h];
+			b = r2();
 		}
 
-		delete[] R;
-		delete[] G;
-		delete[] B;
-		if(a) delete[] a;
+	~Conv() {
+		if(kernel) {
+			for(ll i=0;i<filter;i++) {
+				if(kernel[i]) delete kernel[i];
+			}
+			delete[] kernel;
+		}
+		
+		if(a) {
+			for(ll i=0;i<filter;i++) {
+				if(a[i]) delete a[i];
+			}
+			delete[] a;
+		}
 	}
 };
 
 struct Pooling {
 	std::str type;
-	ll pool_w, pool_h;
+	ll pool_h, pool_w;
+
+	Tensor *kernel, **a;
 	
-	Pooling(ll _pool_h, ll _pool_w, std::str _type) : pool_h(_pool_h), pool_w(_pool_w), type(_type) {}
+	Pooling(ll _pool_h, ll _pool_w, std::str _type) : pool_h(_pool_h), pool_w(_pool_w), type(_type) {
+		a = NULL;
+		kernel = new Tensor(pool_h, pool_w, 1);
+	}
 };
 
 struct Flatten {
@@ -77,34 +97,33 @@ struct Dense {
 };
 
 struct Layer {
-	std::str type;
 	Conv *conv;
 	Pooling *pooling;
 	Flatten *flatten;
 	Dense *dense;
 	
-	Layer(std::str _type, ll filter, ll kernel_h, ll kernel_w, ll stride_h, ll stride_w, ll pad_h, ll pad_w, std::str activation) : type(_type) {
-		conv = new Conv(filter, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w, activation);
+	Layer(ll filter, ll kernel_h, ll kernel_w, ll stride_h, ll stride_w, ll pad_h, ll pad_w, std::str activation, bool input_layer) {
+		conv = new Conv(filter, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w, activation, input_layer);
 		pooling = NULL;
 		flatten = NULL;
 		dense = NULL;
 	}
 	
-	Layer(std::str _type, ll pool_h, ll pool_w, std::str type) : type(_type) {
+	Layer(ll pool_h, ll pool_w, std::str type) {
 		pooling = new Pooling(pool_h, pool_w, type);
 		conv = NULL;
 		flatten = NULL;
 		dense = NULL;
 	}
 	
-	Layer( std::str _type) : type(_type) {
+	Layer() {
 		flatten = new Flatten();
 		conv = NULL;
 		pooling = NULL;
 		dense = NULL;
 	}
 	
-	Layer(std::str _type, ll units, std::str activation) : type(_type) {
+	Layer(ll units, std::str activation) {
 		dense = new Dense(units, activation);
 		conv = NULL;
 		pooling = NULL;
@@ -119,7 +138,7 @@ struct Layer {
 	}
 };
 
-db r2();
 void initialize_weights(std::vector<Layer*> &model);
+void convolution(Tensor *input, Conv *conv);
 
-#endif
+#endif // NN_H
