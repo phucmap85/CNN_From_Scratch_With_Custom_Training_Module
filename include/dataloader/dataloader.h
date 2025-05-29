@@ -2,7 +2,7 @@
 #define DATALODAER_H
 
 #include <bits/stdc++.h>
-#include "../tensor/tensor.h"
+#include "../nn/nn.h"
 #include "../utils/utils.h"
 
 #define ll int

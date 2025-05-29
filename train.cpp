@@ -1,7 +1,6 @@
 #include <bits/stdc++.h>
 #include "include/nn/nn.h"
 #include "include/utils/utils.h"
-#include "include/tensor/tensor.h"
 #include "include/lodepng/lodepng.h"
 #include "include/dataloader/dataloader.h"
 using namespace std;
@@ -24,7 +23,7 @@ str loss_function;
 vector<Layer*> sequential;
 
 // Input and Output
-vector<Tensor *> X;
+vector<Tensor*> X;
 vector<ll> Y;
 vector<str> classes;
 

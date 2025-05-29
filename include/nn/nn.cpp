@@ -22,7 +22,7 @@ void initialize_weights(std::vector<Layer*> &model) {
     }
 }
 
-void convolution_per_layer(Tensor *input, Pooling *pool, Conv *conv) {
+void convolution(Tensor *input, Conv *conv) {
     ll filter = conv->filter;
     ll kernel_h = conv->kernel[0]->height;
     ll kernel_w = conv->kernel[0]->width;
