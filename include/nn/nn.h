@@ -14,20 +14,26 @@
 #define se second
 
 struct Tensor {
-	ll width, height, depth; // Assuming RGB Tensors
-	db ***arr;
+	ll filter, height, width, depth; // Assuming RGB Tensors
+	db ****arr;
 
-	Tensor(const ll _height, const ll _width, const ll _depth) : height(_height), width(_width), depth(_depth) {
-		arr = new db**[depth + 5];
+	Tensor(const ll _filter, const ll _height, const ll _width, const ll _depth) : 
+		filter(_filter), height(_height), width(_width), depth(_depth) {
+		arr = new db***[filter + 5];
 
-		for(ll c=0;c<depth;c++) {
-			arr[c] = new db*[height + 5];
-			for(ll h=0;h<height;h++) arr[c][h] = new db[width + 5];
+		for(ll f=0;f<filter;f++) {
+			arr[f] = new db**[depth + 5];
+			for(ll c=0;c<depth;c++) {
+				arr[f][c] = new db*[height + 5];
+				for(ll h=0;h<height;h++) arr[f][c][h] = new db[width + 5];
+			}
 		}
 
-		for(ll c=0;c<depth;c++) {
-			for(ll h=0;h<height;h++) {
-				for(ll w=0;w<width;w++) arr[c][h][w] = r2();
+		for(ll f=0;f<filter;f++) {
+			for(ll c=0;c<depth;c++) {
+				for(ll h=0;h<height;h++) {
+					for(ll w=0;w<width;w++) arr[f][c][h][w] = r2(); // Initialize randomly
+				}
 			}
 		}
 	}
@@ -42,38 +48,49 @@ struct Tensor {
 			exit(1);
 		}
 
-		width = _width; height = _height; depth = 3;
+		filter = 1; width = _width; height = _height; depth = 3;
 
-		arr = new db**[depth + 5];
+		arr = new db***[filter + 5];
 
-		for(ll c=0;c<depth;c++) {
-			arr[c] = new db*[height + 5];
-			for(ll h=0;h<height;h++) arr[c][h] = new db[width + 5];
+		for(ll f=0;f<filter;f++) {
+			arr[f] = new db**[depth + 5];
+			for(ll c=0;c<depth;c++) {
+				arr[f][c] = new db*[height + 5];
+				for(ll h=0;h<height;h++) arr[f][c][h] = new db[width + 5];
+			}
 		}
 
-		for(ll h=0;h<height;h++) {
-			for(ll w=0;w<width;w++) {
-				for(ll c=0;c<depth;c++) { // RGB channels
-					arr[c][h][w] = pixels[(h * height + w) * 4 + c] / 255.0;
+		for(ll f=0;f<filter;f++) {
+			for(ll h=0;h<height;h++) {
+				for(ll w=0;w<width;w++) {
+					for(ll c=0;c<depth;c++) { // RGB channels
+						arr[f][c][h][w] = pixels[(h * height + w) * 4 + c] / 255.0;
+					}
 				}
 			}
 		}
 	}
 
-	void export_to_file(const std::str filename) {
+	void export_to_file(const std::str filename, const ll f = 0) {
+		if(f < 0 || f >= filter) {
+			std::cerr<<"Invalid filter index: "<<f<<". Valid range is [0, "<<filter-1<<"]."<<std::endl;
+			return;
+		}
+
 		std::vector<unsigned char> pixels;
 		pixels.resize(width * height * 4);
 
 		for(ll h=0;h<height;h++) {
 			for(ll w=0;w<width;w++) {
 				for(ll c=0;c<depth;c++) { // RGB channels
-					pixels[(h * width + w) * 4 + c] = (unsigned char) (arr[c][h][w] * 255.0);
+					pixels[(h * width + w) * 4 + c] = (unsigned char) (arr[f][c][h][w] * 255.0);
 				}
 				pixels[(h * width + w) * 4 + 3] = 255; // Alpha channel
 			}
 		}
 
 		unsigned error = lodepng::encode(filename, pixels, width, height);
+		
 		if(error) {
 			std::cout<<"encoder error "<<error<<": "<<lodepng_error_text(error)<<std::endl;
 			exit(1);
@@ -82,9 +99,12 @@ struct Tensor {
 
 	~Tensor() {
 		if(arr) {
-			for(ll c=0;c<depth;c++) {
-				for(ll h=0;h<height;h++) delete[] arr[c][h];
-				delete[] arr[c];
+			for(ll f=0;f<filter;f++) {
+				for(ll c=0;c<depth;c++) {
+					for(ll h=0;h<height;h++) delete[] arr[f][c][h];
+					delete[] arr[f][c];
+				}
+				delete[] arr[f];
 			}
 			delete[] arr;
 		}
@@ -95,62 +115,51 @@ struct Conv {
 	ll filter;
 	ll stride_h, stride_w;
 	ll pad_h, pad_w;
+	ll input_layer;
 	std::str activation;
 
-	Tensor **kernel, **a;
-	db b;
+	Tensor *kernel, *b, *a;
 	
-	Conv(ll _filter, ll _kernel_h, ll _kernel_w, ll _stride_h, ll _stride_w, ll _pad_h, ll _pad_w, std::str _activation, bool _input_layer) : 
+	Conv(ll _filter, ll _kernel_h, ll _kernel_w, ll _stride_h, ll _stride_w, ll _pad_h, ll _pad_w, std::str _activation) : 
 		filter(_filter),
 		stride_h(_stride_h), stride_w(_stride_w),
 		pad_h(_pad_h), pad_w(_pad_w),
-		activation(_activation) {
-			a = new Tensor*[_filter + 5];
-			
-			kernel = new Tensor*[_filter + 5];
-			for(ll i=0;i<_filter;i++) {
-				// Assuming 3 channels (RGB) for input layer, 1 for others
-				kernel[i] = new Tensor(_kernel_h, _kernel_w, _input_layer ? 3 : 1);
-			}
-
-			b = r2();
-		}
+		activation(_activation) {}
 
 	~Conv() {
-		if(kernel) {
-			for(ll i=0;i<filter;i++) {
-				if(kernel[i]) delete kernel[i];
-			}
-			delete[] kernel;
-		}
-		
-		if(a) {
-			for(ll i=0;i<filter;i++) {
-				if(a[i]) delete a[i];
-			}
-			delete[] a;
-		}
+		if(kernel) delete kernel;
+		if(a) delete a;
+		if(b) delete b;
 	}
 };
 
 struct Pooling {
 	std::str type;
 	ll pool_h, pool_w;
+	ll stride_h, stride_w;
+	ll pad_h, pad_w;
 
-	Tensor *kernel, **a;
+	Tensor *a;
 	
-	Pooling(ll _pool_h, ll _pool_w, std::str _type) : pool_h(_pool_h), pool_w(_pool_w), type(_type) {
-		a = NULL;
-		kernel = new Tensor(pool_h, pool_w, 1);
+	Pooling(ll _pool_h, ll _pool_w, ll _stride_h, ll _stride_w, ll _pad_h, ll _pad_w, std::str _type) : 
+		pool_h(_pool_h), pool_w(_pool_w),
+		stride_h(_stride_h), stride_w(_stride_w),
+		pad_h(_pad_h), pad_w(_pad_w),
+		type(_type) {}
+
+	~Pooling() {
+		if(a) delete a;
 	}
 };
 
 struct Flatten {
 	ll units;
-	db *a;
+	Tensor *a;
 
-	Flatten() : units(0) {
-		a = NULL;
+	Flatten() : units(0) {}
+
+	~Flatten() {
+		if(a) delete a;
 	}
 };
 
@@ -158,19 +167,19 @@ struct Dense {
 	ll units;
 	std::str activation;
 
-	db *a, *y, *w, *b;
+	Tensor *a, *y, *w, *b;
 	
 	Dense(ll _units, std::str _activation) : units(_units), activation(_activation) {
-		a = new db[units + 5];
-		y = new db[units + 5];
-		b = new db[units + 5];
+		a = new Tensor(1, 1, units, 1);
+		y = new Tensor(1, 1, units, 1);
+		b = new Tensor(1, 1, units, 1);
 	}
 
 	~Dense() {
-		if(a) delete[] a;
-		if(y) delete[] y;
-		if(w) delete[] w;
-		if(b) delete[] b;
+		if(w) delete w;
+		if(a) delete a;
+		if(y) delete y;
+		if(b) delete b;
 	}
 };
 
@@ -180,15 +189,15 @@ struct Layer {
 	Flatten *flatten;
 	Dense *dense;
 	
-	Layer(ll filter, ll kernel_h, ll kernel_w, ll stride_h, ll stride_w, ll pad_h, ll pad_w, std::str activation, bool input_layer) {
-		conv = new Conv(filter, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w, activation, input_layer);
+	Layer(ll filter, ll kernel_h, ll kernel_w, ll stride_h, ll stride_w, ll pad_h, ll pad_w, std::str activation) {
+		conv = new Conv(filter, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w, activation);
 		pooling = NULL;
 		flatten = NULL;
 		dense = NULL;
 	}
 	
-	Layer(ll pool_h, ll pool_w, std::str type) {
-		pooling = new Pooling(pool_h, pool_w, type);
+	Layer(ll pool_h, ll pool_w, ll stride_h, ll stride_w, ll pad_h, ll pad_w, std::str type) {
+		pooling = new Pooling(pool_h, pool_w, stride_h, stride_w, pad_h, pad_w, type);
 		conv = NULL;
 		flatten = NULL;
 		dense = NULL;
@@ -216,7 +225,263 @@ struct Layer {
 	}
 };
 
-void initialize_weights(std::vector<Layer*> &model);
+struct Model {
+	ll epochs;
+	ll batch_size;
+	db lr;
+	db best;
+	std::str loss_function;
+	std::vector<Layer*> layers;
+
+	Model() {}
+
+	void read_model_config(const std::str filename) {
+		std::str s;
+		std::ifstream ModelConfiguration(filename.c_str());
+		if(!ModelConfiguration.is_open()) {
+			std::cout<<"Error opening file "<<filename<<std::endl;
+			return;
+		}
+
+		// std::cout<<"Model Configuration:"<<std::endl;
+		// std::cout<<"======================"<<std::endl;
+
+		while(getline(ModelConfiguration, s)) {
+			std::str command = s.substr(0, s.find(" "));
+
+			if(command == "conv") {
+				ll filter, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w, input_layer = 0, input_h, input_w, input_d;
+				char _activation[50], trash[50];
+
+				sscanf(s.c_str(), "%s %d (%d, %d) (%d, %d) (%d, %d) %s %d (%d, %d, %d)", trash, &filter, &kernel_h, &kernel_w, 
+					&stride_h, &stride_w, &pad_h, &pad_w, _activation, &input_layer, &input_h, &input_w, &input_d);
+
+				std::str activation = std::str(_activation);
+
+				Layer *conv = new Layer(filter, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w, activation);
+
+				layers.push_back(conv);
+				
+				// Initialize the convolution layer's kernel and output dimensions
+				ll output_height = 0, output_width = 0;
+				
+				if(input_layer) {
+					output_height = (input_h - kernel_h + 2 * pad_h) / stride_h + 1;
+					output_width = (input_w - kernel_w + 2 * pad_w) / stride_w + 1;
+				} else {
+					ll idx = sz(layers) - 1;
+					if(layers[idx - 1]->pooling) {
+						output_height = (layers[idx - 1]->pooling->a->height - kernel_h + 2 * pad_h) / stride_h + 1;
+						output_width = (layers[idx - 1]->pooling->a->width - kernel_w + 2 * pad_w) / stride_w + 1;
+					} 
+					else if(layers[idx - 1]->conv) {
+						output_height = (layers[idx - 1]->conv->a->height - kernel_h + 2 * pad_h) / stride_h + 1;
+						output_width = (layers[idx - 1]->conv->a->width - kernel_w + 2 * pad_w) / stride_w + 1;
+					} else {
+						std::cerr<<"Error: Previous layer is not a convolution or pooling layer."<<std::endl;
+						exit(1);
+					}
+				}
+
+				conv->conv->kernel = new Tensor(filter, kernel_h, kernel_w, input_layer ? input_d : 1);
+				conv->conv->b = new Tensor(filter, 1, 1, 1);
+				conv->conv->a = new Tensor(filter, output_height, output_width, 1);
+
+				// // Print layer details
+				// std::cout<<"Convolution Layer:"<<std::endl;
+				// std::cout<<"  Filters: "<<conv->conv->filter<<std::endl;
+				// std::cout<<"  Kernel Size: ("<<conv->conv->kernel->height<<", "<<conv->conv->kernel->width<<", "<<conv->conv->kernel->depth<<")"<<std::endl;
+				// std::cout<<"  Stride: ("<<conv->conv->stride_h<<", "<<conv->conv->stride_w<<")"<<std::endl;
+				// std::cout<<"  Padding: ("<<conv->conv->pad_h<<", "<<conv->conv->pad_w<<")"<<std::endl;
+				// std::cout<<"  Activation: "<<conv->conv->activation<<std::endl;
+				// std::cout<<"  Input Layer: "<<(input_layer ? "Yes" : "No")<<std::endl;
+				// std::cout<<"  Output Shape: ("<<conv->conv->a->filter<<", "<<conv->conv->a->height<<", "<<conv->conv->a->width<<", "<<conv->conv->a->depth<<")"<<std::endl;
+			}
+			else if(command == "maxpool" || command == "avgpool") {
+				ll pool_h, pool_w, stride_h, stride_w, pad_h, pad_w;
+				char _type[50];
+
+				sscanf(s.c_str(), "%s (%d, %d) (%d, %d) (%d, %d)", _type, &pool_h, &pool_w, &stride_h, &stride_w, &pad_h, &pad_w);
+
+				std::str type = std::str(_type);
+
+				Layer *pooling = new Layer(pool_h, pool_w, stride_h, stride_w, pad_h, pad_w, type);
+
+				layers.push_back(pooling);
+
+				// Initialize the pooling layer's output dimensions
+				ll output_height = 0, output_width = 0;
+
+				ll idx = sz(layers) - 1;
+				if(layers[idx - 1]->conv) {
+					output_height = (layers[idx - 1]->conv->a->height + 2 * pad_h - pool_h) / stride_h + 1;
+					output_width = (layers[idx - 1]->conv->a->width + 2 * pad_w - pool_w) / stride_w + 1;
+				} 
+				else if(layers[idx - 1]->pooling) {
+					output_height = (layers[idx - 1]->pooling->a->height + 2 * pad_h - pool_h) / stride_h + 1;
+					output_width = (layers[idx - 1]->pooling->a->width + 2 * pad_w - pool_w) / stride_w + 1;
+				} else {
+					std::cerr<<"Error: Previous layer is not a convolution or pooling layer."<<std::endl;
+					exit(1);
+				}
+
+				pooling->pooling->a = new Tensor(layers[idx - 1]->conv->filter, output_height, output_width, 1);
+
+				// // Print layer details
+				// std::cout<<"Pooling Layer:"<<std::endl;
+				// std::cout<<"  Pooling Type: "<<command<<std::endl;
+				// std::cout<<"  Pooling Size: ("<<pooling->pooling->pool_h<<", "<<pooling->pooling->pool_w<<")"<<std::endl;
+				// std::cout<<"  Stride: ("<<pooling->pooling->stride_h<<", "<<pooling->pooling->stride_w<<")"<<std::endl;
+				// std::cout<<"  Padding: ("<<pooling->pooling->pad_h<<", "<<pooling->pooling->pad_w<<")"<<std::endl;
+				// std::cout<<"  Output Shape: ("<<pooling->pooling->a->filter<<", "<<pooling->pooling->a->height<<", "<<pooling->pooling->a->width<<", "<<pooling->pooling->a->depth<<")"<<std::endl;
+			}
+			else if(command == "dense") {
+				ll units; 
+				char _activation[50], trash[50];
+
+				sscanf(s.c_str(), "%s %d %s", trash, &units, _activation);
+
+				std::str activation = std::str(_activation);
+
+				Layer *dense = new Layer(units, activation);
+
+				layers.push_back(dense);
+
+				// Initialize the dense layer's weights and biases
+				ll input_size = 0;
+				ll idx = sz(layers) - 1;
+
+				if(layers[idx - 1]->dense) {
+					input_size = layers[idx - 1]->dense->units;
+				} 
+				else if(layers[idx - 1]->flatten) {
+					input_size = layers[idx - 1]->flatten->units;
+				} else {
+					std::cerr<<"Error: Previous layer is not a dense or flatten layer."<<std::endl;
+					exit(1);
+				}
+
+				dense->dense->w = new Tensor(1, 1, input_size * units, 1);
+
+				// // Print layer details
+				// std::cout<<"Dense Layer:"<<std::endl;
+				// std::cout<<"  Units: "<<units<<std::endl;
+				// std::cout<<"  Activation: "<<activation<<std::endl;
+			}
+			else if(command == "flatten") {
+				Layer *flatten = new Layer();
+
+				layers.push_back(flatten);
+
+				// Initialize the flatten layer's output dimensions
+				ll input_size = 0;
+				ll idx = sz(layers) - 1;
+				if(layers[idx - 1]->conv) {
+					input_size = layers[idx - 1]->conv->a->filter * layers[idx - 1]->conv->a->depth * layers[idx - 1]->conv->a->height * layers[idx - 1]->conv->a->width;
+				} 
+				else if(layers[idx - 1]->pooling) {
+					input_size = layers[idx - 1]->pooling->a->filter * layers[idx - 1]->pooling->a->depth * layers[idx - 1]->pooling->a->height * layers[idx - 1]->pooling->a->width;
+				} else {
+					std::cerr<<"Error: Previous layer is not a convolution or pooling layer."<<std::endl;
+					exit(1);
+				}
+
+				flatten->flatten->units = input_size;
+				flatten->flatten->a = new Tensor(1, 1, input_size, 1);
+
+				// // Print layer details
+				// std::cout<<"Flatten Layer:"<<std::endl;
+				// std::cout<<"  Output Shape: ("<<flatten->flatten->a->filter<<", "<<flatten->flatten->a->height<<", "<<flatten->flatten->a->width<<", "<<flatten->flatten->a->depth<<")"<<std::endl;
+			}
+			else if(command == "compile") {
+				char _loss_function[50], trash[50];
+
+				sscanf(s.c_str(), "%s %s %d %d %lf", trash, _loss_function, &epochs, &batch_size, &lr);
+
+				loss_function = std::str(_loss_function);
+				
+				// // Print compile details
+				// std::cout<<"Compile:"<<std::endl;
+				// std::cout<<"  Loss Function: "<<loss_function<<std::endl;
+				// std::cout<<"  Epochs: "<<epochs<<std::endl;
+				// std::cout<<"  Batch Size: "<<batch_size<<std::endl;
+				// std::cout<<"  Learning Rate: "<<lr<<std::endl;
+			}
+		}
+
+		// std::cout<<"======================"<<std::endl<<std::endl;
+		ModelConfiguration.close();
+	}
+
+	void summary() {
+		// Print model summary like Keras, including layer types, output shapes, and number of parameters
+		std::cout << "Model Summary:" << std::endl;
+		std::cout << "==============================================================" << std::endl;
+		std::cout << std::left << std::setw(25) << "Layer (type)" << std::setw(25) << "Output Shape" << std::setw(15) << "Param #" << std::endl;
+		std::cout << "==============================================================" << std::endl;
+
+		ll total_params = 0;
+
+		for (ll i = 0; i < sz(layers); i++) {
+			std::str layer_name = "layer_" + to_str(i+1);
+			std::str layer_type;
+			std::str output_shape;
+			ll params = 0;
+
+			if (layers[i]->conv) {
+				layer_type = "Conv2D";
+				output_shape = "(None, " +
+							  to_str(layers[i]->conv->a->height) + ", " +
+							  to_str(layers[i]->conv->a->width) + ", " +
+							  to_str(layers[i]->conv->filter) + ")";
+				
+				ll prev_filter = 1;
+				
+				if(i > 0) prev_filter = layers[i-1]->conv ? layers[i-1]->conv->filter : 
+								(layers[i-1]->pooling ? layers[i-1]->pooling->a->filter : 1);
+				
+				params = layers[i]->conv->filter * (prev_filter * layers[i]->conv->kernel->height * 
+							layers[i]->conv->kernel->width * layers[i]->conv->kernel->depth + 1);
+			}
+			else if (layers[i]->pooling) {
+				layer_type = layers[i]->pooling->type;
+				output_shape = "(None, " +
+							  to_str(layers[i]->pooling->a->height) + ", " +
+							  to_str(layers[i]->pooling->a->width) + ", " +
+							  to_str(layers[i]->pooling->a->filter) + ")";
+				
+				params = 0;
+			}
+			else if (layers[i]->flatten) {
+				layer_type = "Flatten";
+				output_shape = "(None, " + to_str(layers[i]->flatten->units) + ")";
+				
+				params = 0;
+			}
+			else if (layers[i]->dense) {
+				layer_type = "Dense";
+				output_shape = "(None, " + to_str(layers[i]->dense->units) + ")";
+				
+				params = layers[i]->dense->w->width + layers[i]->dense->units;
+			}
+
+			std::cout << std::left << std::setw(25) << layer_name + " (" + layer_type + ")" 
+					  << std::setw(25) << output_shape << std::setw(15) << params << std::endl;
+			
+			total_params += params;
+		}
+
+		std::cout << "==============================================================" << std::endl;
+		std::cout << "Total params: " << total_params << std::endl;
+	}
+
+	~Model() {
+		for(ll i=0;i<sz(layers);i++) delete layers[i];
+		layers.clear();
+	}
+};
+
 void convolution(Tensor *input, Conv *conv);
+void pooling(Tensor *input, Pooling *pool);
 
 #endif // NN_H

@@ -10,132 +10,134 @@ db tanh_dx(db x) {return 1 - tanh(x) * tanh(x);}
 db linear(db x) {return x;}
 db linear_dx(db x) {return 1;}
 
-void initialize_weights(std::vector<Layer*> &model) {
-    for(ll i=0;i<sz(model);i++) {
-        if(model[i]->dense) {
-            ll w_size = (model[i-1]->dense ? model[i-1]->dense->units : model[i-1]->flatten->units) * model[i]->dense->units;
-            model[i]->dense->w = new db[w_size + 5];
-            
-            for(ll j=0;j<=w_size;j++) model[i]->dense->w[j] = r2();
-            for(ll j=0;j<=model[i]->dense->units;j++) model[i]->dense->b[j] = r2();
-        }
-    }
+db activation_fn(db x, std::str activation) {
+    if(activation == "relu") return relu(x);
+    else if(activation == "sigmoid") return sigmoid(x);
+    else if(activation == "tanh") return tanh(x);
+    else if(activation == "softmax") return x; // Softmax is handled separately
+    else return linear(x);
 }
 
+db activation_fn_dx(db x, std::str activation) {
+    if(activation == "relu") return relu_dx(x);
+    else if(activation == "sigmoid") return sigmoid_dx(x);
+    else if(activation == "tanh") return tanh_dx(x);
+    else if(activation == "softmax") return 1; // Softmax is handled separately
+    else return linear_dx(x);
+}
+
+
 void convolution(Tensor *input, Conv *conv) {
-    ll filter = conv->filter;
-    ll kernel_h = conv->kernel[0]->height;
-    ll kernel_w = conv->kernel[0]->width;
     ll stride_h = conv->stride_h;
     ll stride_w = conv->stride_w;
     ll pad_h = conv->pad_h;
     ll pad_w = conv->pad_w;
 
-    // Calculate output dimensions
+    ll kernel_height = conv->kernel->height;
+    ll kernel_width = conv->kernel->width;
+    ll kernel_depth = conv->kernel->depth;
+
     ll input_height = input->height;
     ll input_width = input->width;
-    ll output_height = (input_height + 2 * pad_h - kernel_h) / stride_h + 1;
-    ll output_width = (input_width + 2 * pad_w - kernel_w) / stride_w + 1;
+    ll input_depth = input->depth;
+    ll output_height = conv->a->height;
+    ll output_width = conv->a->width;
 
-    for(ll kernel_index=0;kernel_index<filter;kernel_index++) {
-        Tensor *kernel = conv->kernel[kernel_index];
-        Tensor *output = new Tensor(output_height, output_width, 1);
-
+    if(kernel_depth != input_depth) {
+        std::cerr<<"Error: Kernel depth does not match input depth."<<std::endl;
+        return;
+    }
+    
+    for(ll kernel_index=0;kernel_index<conv->filter;kernel_index++) {
         for(ll h=0;h<output_height;h++) {
             for(ll w=0;w<output_width;w++) {
-                db sum = 0.0;
-                for(ll kh=0; kh<kernel_h;kh++) {
-                    for(ll kw=0;kw<kernel_w;kw++) {
+                db value = 0.0;
+                for(ll kh=0;kh<kernel_height;kh++) {
+                    for(ll kw=0;kw<kernel_width;kw++) {
                         ll input_h = h * stride_h - pad_h + kh;
                         ll input_w = w * stride_w - pad_w + kw;
                         if(input_h >= 0 && input_h < input_height && input_w >= 0 && input_w < input_width) {
-                            for(ll c=0;c<input->depth;c++) {
-                                sum += input->arr[c][input_h][input_w] * kernel->arr[c][kh][kw];
+                            db value = 0.0;
+                            for(ll input_index=0;input_index<input->filter;input_index++) {
+                                for(ll kd=0;kd<kernel_depth;kd++) {
+                                    value += conv->kernel->arr[kernel_index][kd][kh][kw] * 
+                                            input->arr[input_index][kd][input_h][input_w];
+                                }
                             }
+                            conv->a->arr[kernel_index][0][h][w] = 
+                                activation_fn(value + conv->b->arr[kernel_index][0][0][0], conv->activation);
                         }
                     }
                 }
-                output->arr[0][h][w] = sum + conv->b;
             }
         }
+    }
 
-        // Apply activation function
-        if(conv->activation == "sigmoid") {
-            for(ll h = 0; h < output_height; h++) {
-                for(ll w = 0; w < output_width; w++) {
-                    output->arr[0][h][w] = sigmoid(output->arr[0][h][w]);
-                }
-            }
-        } else if(conv->activation == "relu") {
-            for(ll h = 0; h < output_height; h++) {
-                for(ll w = 0; w < output_width; w++) {
-                    output->arr[0][h][w] = relu(output->arr[0][h][w]);
-                }
-            }
-        } else if(conv->activation == "tanh") {
-            for(ll h = 0; h < output_height; h++) {
-                for(ll w = 0; w < output_width; w++) {
-                    output->arr[0][h][w] = tanh(output->arr[0][h][w]);
-                }
-            }
-        }
-
-        conv->a[kernel_index] = new Tensor(output_height, output_width, 1);
-        for(ll h = 0; h < output_height; h++) {
-            for(ll w = 0; w < output_width; w++) {
-                conv->a[kernel_index]->arr[0][h][w] = output->arr[0][h][w];
-            }
-        }
-
-        delete output;
-
-        conv->a[kernel_index]->export_to_file("test_image/output_" + to_str(kernel_index) + ".png");
+    for(ll f=0;f<conv->filter;f++) {
+        conv->a->export_to_file("test_image/conv_output_" + to_str(f) + ".png", f);
     }
 }
 
-void pooling(Conv *input, Pooling *pool) {
-    ll pool_h = pool->pool_h;
-    ll pool_w = pool->pool_w;
+void pooling(Tensor *input, Pooling *pool) {
+    ll pool_height = pool->pool_h;
+    ll pool_width = pool->pool_w;
+    ll pool_depth = 1;
+    ll pool_stride_h = pool->stride_h;
+    ll pool_stride_w = pool->stride_w;
+    ll pool_pad_h = pool->pad_h;
+    ll pool_pad_w = pool->pad_w;
     std::str type = pool->type;
 
-    ll input_height = input->a[0]->height;
-    ll input_width = input->a[0]->width;
-    ll output_height = (input_height - pool_h) + 1;
-    ll output_width = (input_width - pool_w) + 1;
+    ll input_height = input->height;
+    ll input_width = input->width;
+    ll input_depth = input->depth;
+    ll output_height = pool->a->height;
+    ll output_width = pool->a->width;
 
-    for(ll kernel_index = 0; kernel_index < input->filter; kernel_index++) {
-        Tensor *output = new Tensor(output_height, output_width, 1);
-
+    if(pool_depth != input_depth) {
+        std::cerr<<"Error: Pooling kernel depth does not match input depth."<<std::endl;
+        return;
+    }
+    
+    for(ll input_index=0;input_index<input->filter;input_index++) {
         for(ll h=0;h<output_height;h++) {
             for(ll w=0;w<output_width;w++) {
-                db value = (type == "max") ? -1e9 : 0.0;
-                for(ll ph=0; ph<pool_h;ph++) {
-                    for(ll pw=0;pw<pool_w;pw++) {
-                        ll input_h = h * 2 + ph;
-                        ll input_w = w * 2 + pw;
-                        if(input_h < input_height && input_w < input_width) {
-                            db current_value = input->a[kernel_index]->arr[0][input_h][input_w];
-                            if(type == "max") {
-                                value = std::max(value, current_value);
-                            } else if(type == "avg") {
-                                value += current_value / (pool_h * pool_w);
+                db value = 0.0;
+                if(type == "maxpool") {
+                    value = -1e9;
+                    for(ll ph=0;ph<pool_height;ph++) {
+                        for(ll pw=0;pw<pool_width;pw++) {
+                            ll input_h = h * pool_stride_h - pool_pad_h + ph;
+                            ll input_w = w * pool_stride_w - pool_pad_w + pw;
+
+                            // Ensure input_h and input_w are within bounds
+                            if(input_h >= 0 && input_h < input_height && input_w >= 0 && input_w < input_width) {
+                                value = std::max(value, input->arr[input_index][0][input_h][input_w]);
                             }
                         }
                     }
+                } else if(type == "avgpool") {
+                    db count = 0;
+                    for(ll ph=0;ph<pool_height;ph++) {
+                        for(ll pw=0;pw<pool_width;pw++) {
+                            ll input_h = h * pool_stride_h - pool_pad_h + ph;
+                            ll input_w = w * pool_stride_w - pool_pad_w + pw;
+
+                            // Ensure input_h and input_w are within bounds
+                            if(input_h >= 0 && input_h < input_height && input_w >= 0 && input_w < input_width) {
+                                value += input->arr[input_index][0][input_h][input_w];
+                                count++;
+                            }
+                        }
+                    }
+                    value /= count;
                 }
-                output->arr[0][h][w] = value;
+                pool->a->arr[input_index][0][h][w] = value;
             }
         }
+    }
 
-        pool->a[kernel_index] = new Tensor(output_height, output_width, 1);
-        for(ll h = 0; h < output_height; h++) {
-            for(ll w = 0; w < output_width; w++) {
-                pool->a[kernel_index]->arr[0][h][w] = output->arr[0][h][w];
-            }
-        }
-
-        delete output;
-
-        pool->a[kernel_index]->export_to_file("test_image/pool_output_" + to_str(kernel_index) + ".png");
+    for(ll f=0;f<input->filter;f++) {
+        pool->a->export_to_file("test_image/pool_output_" + to_str(f) + ".png", f);
     }
 }
