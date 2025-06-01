@@ -3,7 +3,6 @@
 
 #include <bits/stdc++.h>
 #include "../nn/nn.h"
-#include "../utils/utils.h"
 
 #define ll int
 #define str string

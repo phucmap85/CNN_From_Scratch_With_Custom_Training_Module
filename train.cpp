@@ -1,6 +1,5 @@
 #include <bits/stdc++.h>
 #include "include/nn/nn.h"
-#include "include/utils/utils.h"
 #include "include/lodepng/lodepng.h"
 #include "include/dataloader/dataloader.h"
 using namespace std;
@@ -18,27 +17,15 @@ vector<Tensor*> X;
 vector<ll> Y;
 vector<str> classes;
 
-// db softmax(db x, ll layer, ll node) {
-//     db total_exp = 0;
-//     for(ll cnode=0;cnode<nodes_per_layer[layer];cnode++) {
-//         total_exp += exp(Y[layer][cnode]);
-//     }
-//     return exp(x) / total_exp;
-// }
-
 signed main() {
-	srand(time(NULL));
-
-	Model *sequential = new Model();
-	sequential->read_model_config("model.conf");
-
-	sequential->summary();
+	Model *model = new Model();
+	model->read_model_config("model.conf");
+	model->summary();
 
 	load_dataset(100, "cifar", X, Y, classes);
 
-	convolution(X[0], sequential->layers[0]->conv);
+	model->forward(X[0]);
 
-	pooling(sequential->layers[0]->conv->a, sequential->layers[1]->pooling);
-
-	convolution(sequential->layers[1]->pooling->a, sequential->layers[2]->conv);
+	model->layers[sz(model->layers) - 1]->dense->y->print();
+	model->layers[sz(model->layers) - 1]->dense->a->print();
 }

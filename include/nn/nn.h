@@ -3,7 +3,6 @@
 
 #include <bits/stdc++.h>
 #include "../lodepng/lodepng.h"
-#include "../utils/utils.h"
 
 #define ll int
 #define str string
@@ -12,6 +11,7 @@
 #define pii pair<ll, ll>
 #define fi first
 #define se second
+#define r2 (((db) rand() / (db) RAND_MAX) * 2 - 1);
 
 struct Tensor {
 	ll filter, height, width, depth; // Assuming RGB Tensors
@@ -32,7 +32,7 @@ struct Tensor {
 		for(ll f=0;f<filter;f++) {
 			for(ll c=0;c<depth;c++) {
 				for(ll h=0;h<height;h++) {
-					for(ll w=0;w<width;w++) arr[f][c][h][w] = r2(); // Initialize randomly
+					for(ll w=0;w<width;w++) arr[f][c][h][w] = r2; // Initialize randomly
 				}
 			}
 		}
@@ -71,6 +71,81 @@ struct Tensor {
 		}
 	}
 
+	Tensor(const db value) {
+		filter = 1; height = 1; width = 1; depth = 1;
+		arr = new db***[filter + 5];
+		arr[0] = new db**[depth + 5];
+		arr[0][0] = new db*[height + 5];
+		arr[0][0][0] = new db[width + 5];
+		arr[0][0][0][0] = value;
+	}
+
+	void print() {
+		std::cout << "Tensor(" << filter << ", " << depth << ", " << height << ", " << width << ")\n" << std::fixed << std::setprecision(6);
+		
+		// For large tensors, show partial content
+		if (filter * depth * height * width > 1000) {
+			std::cout << "array([";
+			// Number of items to show at beginning and end
+			const int show_items = 3;
+			
+			for (ll f = 0; f < filter; f++) {
+				if (f > 0) std::cout << ",\n       ";
+				std::cout << "[";
+				for (ll c = 0; c < depth; c++) {
+					if (c > 0) std::cout << ",\n        ";
+					std::cout << "[";
+					for (ll h = 0; h < height; h++) {
+						if (h > 0) std::cout << ",\n         ";
+						std::cout << "[";
+						
+						// Show first few values
+						for (ll w = 0; w < std::min(show_items, width); w++) {
+							std::cout << std::setw(9) << arr[f][c][h][w];
+							if (w < std::min(show_items, width) - 1) std::cout << ", ";
+						}
+						
+						// Add ellipsis if needed
+						if (width > 2 * show_items) {
+							std::cout << ", ..., ";
+							
+							// Show last few values
+							for (ll w = std::max(show_items, width - show_items); w < width; w++) {
+								std::cout << std::setw(9) << arr[f][c][h][w];
+								if (w < width - 1) std::cout << ", ";
+							}
+						}
+						std::cout << "]";
+					}
+					std::cout << "]";
+				}
+				std::cout << "]";
+			}
+			std::cout << "])" << std::endl;
+			return;
+		}
+		
+		std::cout << "array([";
+		for (ll f = 0; f < filter; f++) {
+			if (f > 0) std::cout << ",\n       ";
+			std::cout << "[";
+			for (ll c = 0; c < depth; c++) {
+				if (c > 0) std::cout << ",\n        ";
+				std::cout << "[";
+				for (ll h = 0; h < height; h++) {
+					if (h > 0) std::cout << ",\n         ";
+					std::cout << "[";
+					for (ll w = 0; w < width; w++)
+						std::cout << std::setw(9) << arr[f][c][h][w] << (w < width - 1 ? ", " : "");
+					std::cout << "]";
+				}
+				std::cout << "]";
+			}
+			std::cout << "]";
+		}
+		std::cout << "])" << std::endl;
+	}
+
 	void export_to_file(const std::str filename, const ll f = 0) {
 		if(f < 0 || f >= filter) {
 			std::cerr<<"Invalid filter index: "<<f<<". Valid range is [0, "<<filter-1<<"]."<<std::endl;
@@ -80,16 +155,36 @@ struct Tensor {
 		std::vector<unsigned char> pixels;
 		pixels.resize(width * height * 4);
 
+		// Find min and max values in the tensor for normalization
+		db min_val = std::numeric_limits<db>::max();
+		db max_val = std::numeric_limits<db>::lowest();
+		
+		for(ll h=0; h<height; h++) {
+			for(ll w=0; w<width; w++) {
+				for(ll c=0; c<depth; c++) {
+					min_val = std::min(min_val, arr[f][c][h][w]);
+					max_val = std::max(max_val, arr[f][c][h][w]);
+				}
+			}
+		}
+		
+		// Avoid division by zero if all values are the same
+		db range = max_val - min_val;
+		if(range == 0) range = 1;
+
 		for(ll h=0;h<height;h++) {
 			for(ll w=0;w<width;w++) {
 				for(ll c=0;c<depth;c++) { // RGB channels
-					pixels[(h * width + w) * 4 + c] = (unsigned char) (arr[f][c][h][w] * 255.0);
+					// Normalize to [0,1] based on min/max values
+					db normalized = (arr[f][c][h][w] - min_val) / range;
+					pixels[(h * width + w) * 4 + c] = (unsigned char)(normalized * 255.0);
 				}
 				pixels[(h * width + w) * 4 + 3] = 255; // Alpha channel
 			}
 		}
 
-		unsigned error = lodepng::encode(filename, pixels, width, height);
+		unsigned error = lodepng::encode(filename, pixels, width, height, 
+			depth < 3 ? LCT_GREY : LCT_RGBA);
 		
 		if(error) {
 			std::cout<<"encoder error "<<error<<": "<<lodepng_error_text(error)<<std::endl;
@@ -423,7 +518,7 @@ struct Model {
 		ll total_params = 0;
 
 		for (ll i = 0; i < sz(layers); i++) {
-			std::str layer_name = "layer_" + to_str(i+1);
+			std::str layer_name = "layer_" + std::to_string(i+1);
 			std::str layer_type;
 			std::str output_shape;
 			ll params = 0;
@@ -431,9 +526,9 @@ struct Model {
 			if (layers[i]->conv) {
 				layer_type = "Conv2D";
 				output_shape = "(None, " +
-							  to_str(layers[i]->conv->a->height) + ", " +
-							  to_str(layers[i]->conv->a->width) + ", " +
-							  to_str(layers[i]->conv->filter) + ")";
+							  std::to_string(layers[i]->conv->a->height) + ", " +
+							  std::to_string(layers[i]->conv->a->width) + ", " +
+							  std::to_string(layers[i]->conv->filter) + ")";
 				
 				ll prev_filter = 1;
 				
@@ -446,21 +541,21 @@ struct Model {
 			else if (layers[i]->pooling) {
 				layer_type = layers[i]->pooling->type;
 				output_shape = "(None, " +
-							  to_str(layers[i]->pooling->a->height) + ", " +
-							  to_str(layers[i]->pooling->a->width) + ", " +
-							  to_str(layers[i]->pooling->a->filter) + ")";
+							  std::to_string(layers[i]->pooling->a->height) + ", " +
+							  std::to_string(layers[i]->pooling->a->width) + ", " +
+							  std::to_string(layers[i]->pooling->a->filter) + ")";
 				
 				params = 0;
 			}
 			else if (layers[i]->flatten) {
 				layer_type = "Flatten";
-				output_shape = "(None, " + to_str(layers[i]->flatten->units) + ")";
+				output_shape = "(None, " + std::to_string(layers[i]->flatten->units) + ")";
 				
 				params = 0;
 			}
 			else if (layers[i]->dense) {
 				layer_type = "Dense";
-				output_shape = "(None, " + to_str(layers[i]->dense->units) + ")";
+				output_shape = "(None, " + std::to_string(layers[i]->dense->units) + ")";
 				
 				params = layers[i]->dense->w->width + layers[i]->dense->units;
 			}
@@ -475,6 +570,11 @@ struct Model {
 		std::cout << "Total params: " << total_params << std::endl;
 	}
 
+	void forward(Tensor *input);
+	void backward();
+
+	void fit(std::vector<Tensor*> &X, std::vector<ll> &Y, const std::vector<std::str> &classes);
+
 	~Model() {
 		for(ll i=0;i<sz(layers);i++) delete layers[i];
 		layers.clear();
@@ -483,5 +583,7 @@ struct Model {
 
 void convolution(Tensor *input, Conv *conv);
 void pooling(Tensor *input, Pooling *pool);
+void flatten(Tensor *input, Flatten *flatten);
+void dense(Tensor *input, Dense *dense);
 
 #endif // NN_H
