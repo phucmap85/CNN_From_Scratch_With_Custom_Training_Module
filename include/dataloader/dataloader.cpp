@@ -4,13 +4,13 @@ void load_dataset(const ll maxLength, const std::str path, std::vector<Tensor *>
     std::ifstream trainLabels((path + "/trainLabels.csv").c_str());
 
     if(!trainLabels.is_open()) {
-        std::cout<<"Error opening trainLabels.csv.";
+        std::cerr<<"Error opening trainLabels.csv.";
         exit(1);
     }
 
     std::str s;
     ll cntClasses = 0;
-    std::map<std::str, ll> hashMap;
+    std::unordered_map<std::str, ll> hashMap;
 
     getline(trainLabels, s);
     while(getline(trainLabels, s) && sz(X) < maxLength) {

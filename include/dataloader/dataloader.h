@@ -1,7 +1,11 @@
 #ifndef DATALOADER_H
 #define DATALODAER_H
 
-#include <bits/stdc++.h>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <unordered_map>
 #include "../nn/nn.h"
 
 #define ll int

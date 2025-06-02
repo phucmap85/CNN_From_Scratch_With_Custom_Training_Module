@@ -1,4 +1,3 @@
-#include <bits/stdc++.h>
 #include "include/nn/nn.h"
 #include "include/lodepng/lodepng.h"
 #include "include/dataloader/dataloader.h"
@@ -22,7 +21,7 @@ signed main() {
 	model->read_model_config("model.conf");
 	model->summary();
 
-	load_dataset(100, "cifar", X, Y, classes);
+	load_dataset(10, "cifar", X, Y, classes);
 
 	model->forward(X[0]);
 

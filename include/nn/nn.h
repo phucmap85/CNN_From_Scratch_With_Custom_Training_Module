@@ -1,7 +1,12 @@
 #ifndef NN_H
 #define NN_H
 
-#include <bits/stdc++.h>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <iomanip>
+#include <math.h>
 #include "../lodepng/lodepng.h"
 
 #define ll int
@@ -11,7 +16,7 @@
 #define pii pair<ll, ll>
 #define fi first
 #define se second
-#define r2 (((db) rand() / (db) RAND_MAX) * 2 - 1);
+#define r2 (((db) rand() / (db) RAND_MAX) * 2 - 1)
 
 struct Tensor {
 	ll filter, height, width, depth; // Assuming RGB Tensors
@@ -156,8 +161,7 @@ struct Tensor {
 		pixels.resize(width * height * 4);
 
 		// Find min and max values in the tensor for normalization
-		db min_val = std::numeric_limits<db>::max();
-		db max_val = std::numeric_limits<db>::lowest();
+		db min_val = 1e18, max_val = -1e18;
 		
 		for(ll h=0; h<height; h++) {
 			for(ll w=0; w<width; w++) {
@@ -177,14 +181,13 @@ struct Tensor {
 				for(ll c=0;c<depth;c++) { // RGB channels
 					// Normalize to [0,1] based on min/max values
 					db normalized = (arr[f][c][h][w] - min_val) / range;
-					pixels[(h * width + w) * 4 + c] = (unsigned char)(normalized * 255.0);
+					pixels[(h * width + w) * 4 + c] = (unsigned char) (normalized * 255.0);
 				}
 				pixels[(h * width + w) * 4 + 3] = 255; // Alpha channel
 			}
 		}
 
-		unsigned error = lodepng::encode(filename, pixels, width, height, 
-			depth < 3 ? LCT_GREY : LCT_RGBA);
+		unsigned error = lodepng::encode(filename, pixels, width, height, depth < 3 ? LCT_GREY : LCT_RGBA);
 		
 		if(error) {
 			std::cout<<"encoder error "<<error<<": "<<lodepng_error_text(error)<<std::endl;
@@ -580,10 +583,5 @@ struct Model {
 		layers.clear();
 	}
 };
-
-void convolution(Tensor *input, Conv *conv);
-void pooling(Tensor *input, Pooling *pool);
-void flatten(Tensor *input, Flatten *flatten);
-void dense(Tensor *input, Dense *dense);
 
 #endif // NN_H
