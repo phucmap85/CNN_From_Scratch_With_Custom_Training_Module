@@ -540,12 +540,8 @@ struct Optimizer {
 	db lr;
 
 	Optimizer(const std::str &_name, db _lr) : name(_name), lr(_lr) {
-		if(name != "adam" && name != "sgd" && name != "rmsprop") {
+		if(name != "adam" && name != "sgd" && name != "rmsprop" && name != "adagrad" && name != "adadelta") {
 			std::cerr<<"Error: Unknown optimizer: "<<name<<std::endl;
-			exit(1);
-		}
-		if(lr <= 0) {
-			std::cerr<<"Error: Learning rate must be positive."<<std::endl;
 			exit(1);
 		}
 	}
@@ -557,6 +553,12 @@ struct Optimizer {
 			const db beta2 = 0.999;
 			const db epsilon = 1e-8;
 
+			if(lr <= 0) {
+				// Set default learning rate if not provided
+				std::cerr<<"Warning: Learning rate not set for Adam, using default value of 0.001."<<std::endl;
+				lr = 0.001;
+			}
+
 			m->arr[f][d][h][w] = beta1 * m->arr[f][d][h][w] + (1 - beta1) * grad->arr[f][d][h][w];
 			v->arr[f][d][h][w] = beta2 * v->arr[f][d][h][w] + (1 - beta2) * pow(grad->arr[f][d][h][w], 2);
 
@@ -566,6 +568,12 @@ struct Optimizer {
 			input->arr[f][d][h][w] -= lr * m_hat / (sqrt(v_hat) + epsilon);
 		} else if(name == "sgd") {
 			const db momentum = 0.9;
+
+			if(lr <= 0) {
+				// Set default learning rate if not provided
+				std::cerr<<"Warning: Learning rate not set for SGD, using default value of 0.01."<<std::endl;
+				lr = 0.01;
+			}
 			
 			v->arr[f][d][h][w] = momentum * v->arr[f][d][h][w] + (1 - momentum) * grad->arr[f][d][h][w];
 
@@ -574,9 +582,52 @@ struct Optimizer {
 			const db decay_rate = 0.99;
 			const db epsilon = 1e-8;
 
+			if(lr <= 0) {
+				// Set default learning rate if not provided
+				std::cerr<<"Warning: Learning rate not set for RMSProp, using default value of 0.001."<<std::endl;
+				lr = 0.001;
+			}
+
 			v->arr[f][d][h][w] = decay_rate * v->arr[f][d][h][w] + (1 - decay_rate) * pow(grad->arr[f][d][h][w], 2);
 
 			input->arr[f][d][h][w] -= lr * grad->arr[f][d][h][w] / (sqrt(v->arr[f][d][h][w]) + epsilon);
+		} else if(name == "adagrad") {
+			const db epsilon = 1e-8;
+
+			if(lr <= 0) {
+				// Set default learning rate if not provided
+				std::cerr<<"Warning: Learning rate not set for Adagrad, using default value of 0.001."<<std::endl;
+				lr = 0.001;
+			}
+
+			v->arr[f][d][h][w] += pow(grad->arr[f][d][h][w], 2);
+			
+			input->arr[f][d][h][w] -= lr * grad->arr[f][d][h][w] / (sqrt(v->arr[f][d][h][w]) + epsilon);
+		} else if(name == "adadelta") {
+			const db decay_rate = 0.95;
+			const db epsilon = 1e-8;
+
+			if(lr <= 0) {
+				// Set default learning rate if not provided
+				std::cerr<<"Warning: Learning rate not set for Adadelta, using default value of 1.0."<<std::endl;
+				lr = 1.0;
+			}
+
+			// Assuming m is the accumulated squared gradients (E[g^2])
+			// Assuming v is the accumulated updates (E[delta_theta^2])
+
+			m->arr[f][d][h][w] = decay_rate * m->arr[f][d][h][w] + (1 - decay_rate) * pow(grad->arr[f][d][h][w], 2);
+			
+			db rms_g = sqrt(m->arr[f][d][h][w] + epsilon);
+			db rms_delta_theta = sqrt(v->arr[f][d][h][w] + epsilon);
+			db delta_theta = - lr * (rms_delta_theta / (rms_g + epsilon)) * grad->arr[f][d][h][w];
+
+			v->arr[f][d][h][w] = decay_rate * v->arr[f][d][h][w] + (1 - decay_rate) * pow(delta_theta, 2);
+
+			input->arr[f][d][h][w] += delta_theta;
+		} else {
+			std::cerr<<"Error: Unknown optimizer: "<<name<<std::endl;
+			exit(1);
 		}
 	}
 };
@@ -923,13 +974,19 @@ struct Model {
 		std::cout << "Total params: " << total_params << std::endl;
 	}
 
+	// Model operations
+	void forward(Tensor *input);
+	void backward();
+	void gradient_descent();
+
+	// Reset states for forward and backward passes
 	void reset_forward();
 	void reset_backward_per_batch();
 	void reset_backward_per_datapoint();
 
-	void forward(Tensor *input);
-	void backward();
-	void gradient_descent();
+	// Other operations
+	void save_model_to_file(const std::str filename);
+	bool load_model_from_file(const std::str filename);
 
 	~Model() {
 		for(ll i=0;i<sz(layers);i++) delete layers[i];

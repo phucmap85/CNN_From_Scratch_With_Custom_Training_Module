@@ -817,3 +817,218 @@ void Model::reset_backward_per_datapoint() {
         }
     }
 }
+
+//////////////////////// Other operations ////////////////////////
+
+void Model::save_model_to_file(const std::str filename) {
+    std::ofstream file(filename);
+    if(!file.is_open()) {
+        std::cerr<<"Error: Could not open file "<<filename<<" for writing."<<std::endl;
+        return;
+    }
+
+    // Write the number of layers
+    file<<sz(layers)<<std::endl;
+
+    // For each layer, write the layer type and its parameters
+    for(ll i=0;i<sz(layers);i++) {
+        if(layers[i]->input) {
+            Input *input=layers[i]->input;
+            file<<"input"<<std::endl;
+            file<<input->a->filter<<" "<<input->a->depth<<" "<<input->a->height<<" "<<input->a->width<<std::endl;
+        }
+        else if(layers[i]->conv) {
+            Conv *conv=layers[i]->conv;
+            file<<"conv"<<std::endl;
+            file<<conv->filter<<" "<<conv->kernel->depth<<" "<<conv->kernel->height<<" "<<conv->kernel->width<<std::endl;
+            file<<conv->stride_h<<" "<<conv->stride_w<<std::endl;
+            file<<conv->pad_h<<" "<<conv->pad_w<<std::endl;
+            file<<conv->activation<<std::endl;
+            
+            // Flatten and save kernel weights
+            for(ll f=0;f<conv->filter;f++) {
+                for(ll d=0;d<conv->kernel->depth;d++) {
+                    for(ll h=0;h<conv->kernel->height;h++) {
+                        for(ll w=0;w<conv->kernel->width;w++) {
+                            file<<conv->kernel->arr[f][d][h][w]<<" ";
+                        }
+                    }
+                }
+            }
+            file<<std::endl;
+            
+            // Flatten and save biases
+            for(ll f=0;f<conv->filter;f++) {
+                file<<conv->b->arr[f][0][0][0]<<" ";
+            }
+            file<<std::endl;
+        }
+        else if(layers[i]->pooling) {
+            Pooling *pool=layers[i]->pooling;
+            file<<"pooling"<<std::endl;
+            file<<pool->type<<std::endl;
+            file<<pool->pool_h<<" "<<pool->pool_w<<std::endl;
+            file<<pool->stride_h<<" "<<pool->stride_w<<std::endl;
+            file<<pool->pad_h<<" "<<pool->pad_w<<std::endl;
+        }
+        else if(layers[i]->flatten) {
+            file<<"flatten"<<std::endl;
+        }
+        else if(layers[i]->dense) {
+            Dense *dense=layers[i]->dense;
+            file<<"dense"<<std::endl;
+            file<<dense->units<<" "<<dense->w->width<<std::endl;
+            file<<dense->activation<<std::endl;
+            
+            // Flatten and save weights
+            for(ll j=0;j<dense->units;j++) {
+                for(ll k=0;k<dense->w->width;k++) {
+                    file<<dense->w->arr[j][0][0][k]<<" ";
+                }
+            }
+            file<<std::endl;
+            
+            // Flatten and save biases
+            for(ll j=0;j<dense->units;j++) file<<dense->b->arr[0][0][0][j]<<" ";
+            file<<std::endl;
+        }
+    }
+
+    file.close();
+}
+
+bool Model::load_model_from_file(const std::str filename) {
+    std::ifstream file(filename);
+    if(!file.is_open()) {
+        std::cerr<<"Error: Could not open file "<<filename<<" for reading."<<std::endl;
+        return 0;
+    }
+
+    ll num_layers;
+    file>>num_layers;
+
+    if(num_layers <= 0 || sz(layers) > num_layers) {
+        std::cerr<<"Error: Invalid number of layers in the model file."<<std::endl;
+        exit(1);
+    }
+
+    for(ll i=0;i<num_layers;i++) {
+        std::str layer_type;
+        file>>layer_type;
+
+        if(layer_type == "input") {
+            ll filter, depth, height, width;
+            file>>filter>>depth>>height>>width;
+            
+            if(layers[i]->input) {
+                Input *input = layers[i]->input;
+                if(filter == input->a->filter && depth == input->a->depth && height == input->a->height && width == input->a->width) {
+                    // Okey, just read the input tensor
+                } else {
+                    std::cerr<<"Error: Input layer mismatch."<<std::endl;
+                    exit(1);
+                }
+            } else {
+                std::cerr<<"Error: Input layer mismatch."<<std::endl;
+                exit(1);
+            }
+        }
+        else if(layer_type == "conv") {
+            if(layers[i]->conv) {
+                Conv *conv = layers[i]->conv;
+                ll filter, depth, height, width, stride_h, stride_w, pad_h, pad_w;
+                std::str activation;
+                
+                file>>filter>>depth>>height>>width;
+                file>>stride_h>>stride_w;
+                file>>pad_h>>pad_w;
+                file>>activation;
+
+                if(filter == conv->filter && depth == conv->kernel->depth && height == conv->kernel->height && width == conv->kernel->width) {
+                    for(ll f=0;f<filter;f++) {
+                        for(ll d=0;d<depth;d++) {
+                            for(ll h=0;h<height;h++) {
+                                for(ll w=0;w<width;w++) file>>conv->kernel->arr[f][d][h][w];
+                            }
+                        }
+                    }
+
+                    for(ll f=0;f<filter;f++) file>>conv->b->arr[f][0][0][0];
+                } else {
+                    std::cerr<<"Error: Convolution layer mismatch."<<std::endl;
+                    exit(1);
+                }
+            } else {
+                std::cerr<<"Error: Convolution layer mismatch."<<std::endl;
+                exit(1);
+            }
+        }
+        else if(layer_type == "pooling") {
+            if(layers[i]->pooling) {
+                Pooling *pool = layers[i]->pooling;
+                
+                std::str type;
+                file>>type;
+                
+                if(type != pool->type) {
+                    std::cerr<<"Error: Pooling layer type mismatch."<<std::endl;
+                    exit(1);
+                }
+                
+                ll pool_h, pool_w, stride_h, stride_w, pad_h, pad_w;
+                file>>pool_h>>pool_w;
+                file>>stride_h>>stride_w;
+                file>>pad_h>>pad_w;
+
+                if(pool_h == pool->pool_h && pool_w == pool->pool_w && stride_h == pool->stride_h && stride_w == pool->stride_w && pad_h == pool->pad_h && pad_w == pool->pad_w) {
+                    // No parameters to load for pooling layer
+                } else {
+                    std::cerr<<"Error: Pooling layer parameters mismatch."<<std::endl;
+                    exit(1);
+                }
+            } else {
+                std::cerr<<"Error: Pooling layer mismatch."<<std::endl;
+                exit(1);
+            }
+        }
+        else if(layer_type == "flatten") {
+            if(layers[i]->flatten) {
+                Flatten *flatten = layers[i]->flatten;
+                // No parameters to load for flatten layer
+            } else {
+                std::cerr<<"Error: Flatten layer mismatch."<<std::endl;
+                exit(1);
+            }
+        }
+        else if(layer_type == "dense") {
+            if(layers[i]->dense) {
+                Dense *dense = layers[i]->dense;
+                ll units, width;
+                std::str activation;
+                file>>units>>width;
+                file>>activation;
+
+                if(units == dense->units && width == dense->w->width) {
+                    for(ll j=0;j<units;j++) {
+                        for(ll k=0;k<width;k++) file>>dense->w->arr[j][0][0][k];
+                    }
+
+                    for(ll j=0;j<units;j++) file>>dense->b->arr[0][0][0][j];
+                } else {
+                    std::cerr<<"Error: Dense layer mismatch."<<std::endl;
+                    exit(1);
+                }
+            } else {
+                std::cerr<<"Error: Dense layer mismatch."<<std::endl;
+                exit(1);
+            }
+        } else {
+            std::cerr<<"Error: Unknown layer type "<<layer_type<<std::endl;
+            exit(1);
+        }
+    }
+
+    file.close();
+
+    return 1;
+}

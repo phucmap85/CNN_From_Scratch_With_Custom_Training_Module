@@ -33,13 +33,8 @@ db accuracy(vector<ll> &y_true, vector<ll> &y_pred) {
 }
 
 signed main() {
-	srand(time(NULL));
-
-	Model *model = new Model();
-	model->read_model_config("model.conf");
-	model->summary();
-
-	load_dataset(7000, "mnist", X, Y, classes);
+	// Load dataset
+	load_dataset(50000, "cifar", X, Y, classes);
 
 	train_test_split(X, Y, X_train, Y_train, X_test, Y_test, 0.2);
 
@@ -49,9 +44,18 @@ signed main() {
 	cout<<"Training set size: "<<sz(X_train)<<endl;
 	cout<<"Testing set size: "<<sz(X_test)<<endl;
 
-	db best = 0;
+	// Create the model
+	Model *model = new Model();
+	model->read_model_config("model.conf");
+	model->summary();
+	if(!model->load_model_from_file("best.nn")) {
+		cout<<"No pre-trained model found, starting from scratch."<<endl;
+	} else {
+		cout<<"Loaded pre-trained model successfully."<<endl;
+	}
 
 	// Train the model
+	db best = 0;
 	for (ll epoch = 0; epoch < model->epochs; epoch++) {
 		shuffle_dataset(X_train, Y_train);
 		
@@ -124,8 +128,15 @@ signed main() {
 		db train_loss = train_total_loss / sz(X_train);
 		db valid_loss = valid_total_loss / sz(X_test);
 		db valid_accuracy = accuracy(valid_Y_true, valid_Y_pred);
-		best = max(best, valid_accuracy);
 		
+		// Save the model if validation accuracy improves
+		if (valid_accuracy > best) {
+			best = valid_accuracy;
+			model->save_model_to_file("best.nn");
+		}
+		model->save_model_to_file("last.nn");
+		
+		// Print epoch results
 		cout << "\nEpoch " << epoch+1 << " completed"
 			 << " - loss: " << train_loss
 			 << " - acc: " << train_accuracy
