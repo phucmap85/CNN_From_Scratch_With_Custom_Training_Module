@@ -1,3 +1,4 @@
 cifar/
+mnist/
 .vscode
 test_image/
