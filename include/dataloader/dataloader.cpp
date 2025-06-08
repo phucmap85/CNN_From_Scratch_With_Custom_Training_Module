@@ -62,7 +62,7 @@ void undersampling(std::vector<Tensor*> &X, std::vector<Tensor*> &Y, const std::
     }
     
     // Find minimum class count
-    ll minCount = INT_MAX;
+    ll minCount = 1e9;
     for(ll count : classCount) {
         if(count < minCount) minCount = count;
     }
