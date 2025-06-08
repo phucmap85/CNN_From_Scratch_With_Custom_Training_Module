@@ -34,7 +34,7 @@ db accuracy(vector<ll> &y_true, vector<ll> &y_pred) {
 
 signed main() {
 	// Load dataset
-	load_dataset(50000, "cifar", X, Y, classes);
+	load_dataset(10000, "cifar", X, Y, classes);
 
 	train_test_split(X, Y, X_train, Y_train, X_test, Y_test, 0.2);
 
