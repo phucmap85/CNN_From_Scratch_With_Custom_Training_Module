@@ -1,4 +1,3 @@
-#include <cstdlib>
 #include "include/nn/nn.h"
 #include "include/lodepng/lodepng.h"
 #include "include/dataloader/dataloader.h"
@@ -144,6 +143,4 @@ signed main() {
 			 << " - val_acc: " << valid_accuracy
 			 << " - best: " << best << endl;
 	}
-
-	system("pause");
 }
