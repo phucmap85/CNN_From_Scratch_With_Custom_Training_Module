@@ -32,6 +32,8 @@ db accuracy(vector<ll> &y_true, vector<ll> &y_pred) {
 }
 
 signed main() {
+	srand(time(0));
+
 	// Load dataset
 	load_dataset(10000, "cifar", X, Y, classes);
 
